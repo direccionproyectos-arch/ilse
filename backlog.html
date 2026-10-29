@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backlog de empresas · Folios</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header class="topbar"></header>
+  <main>
+    <div id="app">
+      <div class="pestanas" id="pestanas">
+        <button data-t="emisoras" class="activo">🏢 Facturadoras (emisoras)</button>
+        <button data-t="receptoras">👥 Clientes (receptoras)</button>
+        <button data-t="conceptos">🧠 Códigos SAT aprendidos</button>
+      </div>
+      <section class="tarjeta">
+        <h2 id="titulo"></h2>
+        <p class="ayuda" id="ayuda"></p>
+        <div class="acciones" style="margin-top:0; margin-bottom:16px">
+          <input type="search" class="buscador" id="buscar" placeholder="🔎 Buscar…">
+          <button class="btn" id="btnNuevo">➕ Agregar</button>
+        </div>
+        <div class="tabla-wrap"><table class="lista" id="tabla"></table></div>
+      </section>
+      <section class="tarjeta">
+        <h2>💾 Respaldo</h2>
+        <p class="ayuda">Descarga todo el backlog en un archivo, o súbelo para restaurarlo / pasarlo de modo local a Supabase.</p>
+        <div class="acciones" style="margin-top:0">
+          <button class="btn sec" id="btnExportar">⬇️ Exportar respaldo</button>
+          <button class="btn sec" id="btnImportar">⬆️ Importar respaldo</button>
+          <input type="file" id="archivoImportar" accept=".json" class="oculto">
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/datos.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/sat.js"></script>
+  <script src="js/backlog.js"></script>
+</body>
+</html>
