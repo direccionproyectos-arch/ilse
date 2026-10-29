@@ -6,10 +6,13 @@
 create table if not exists public.folio_emisoras (
   id              uuid primary key default gen_random_uuid(),
   nombre          text not null,
+  rfc             text,
   nombre_archivo  text,
   alias           text,
   updated_at      timestamptz default now()
 );
+-- (si ya habías creado la tabla antes, esto agrega la columna nueva)
+alter table public.folio_emisoras add column if not exists rfc text;
 
 create table if not exists public.folio_receptoras (
   id              uuid primary key default gen_random_uuid(),

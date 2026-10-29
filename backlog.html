@@ -15,8 +15,20 @@
         <button data-t="emisoras" class="activo">🏢 Facturadoras (emisoras)</button>
         <button data-t="receptoras">👥 Clientes (receptoras)</button>
         <button data-t="conceptos">🧠 Códigos SAT aprendidos</button>
+        <button data-t="xml">📥 Importar desde XML</button>
       </div>
-      <section class="tarjeta">
+      <section class="tarjeta oculto" id="tarjetaXml">
+        <h2>📥 Importar desde XML de facturas (CFDI)</h2>
+        <p class="ayuda">Sube XML de facturas ya timbradas (uno, varios o un ZIP). El sistema toma los datos del <b>cliente (receptor)</b>, de la <b>facturadora (emisor)</b> y el <b>código SAT y unidad de cada concepto</b>. Antes de guardar te muestra todo para que elijas qué agregar.</p>
+        <div class="dropzone" id="dropXml">
+          <div class="grande">🗂️</div>
+          <b>Suelta aquí los XML o un ZIP</b>
+          <div class="nota">(CFDI 3.3 o 4.0 · puedes seleccionar muchos a la vez)</div>
+        </div>
+        <input type="file" id="archivoXml" accept=".xml,.zip,text/xml,application/xml,application/zip" multiple class="oculto">
+        <div id="resultadoXml"></div>
+      </section>
+      <section class="tarjeta" id="tarjetaLista">
         <h2 id="titulo"></h2>
         <p class="ayuda" id="ayuda"></p>
         <div class="acciones" style="margin-top:0; margin-bottom:16px">
@@ -40,7 +52,9 @@
   <script src="js/config.js"></script>
   <script src="js/datos.js"></script>
   <script src="js/ui.js"></script>
+  <script src="vendor/jszip.min.js"></script>
   <script src="js/sat.js"></script>
+  <script src="js/xml.js"></script>
   <script src="js/backlog.js"></script>
 </body>
 </html>

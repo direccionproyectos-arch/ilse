@@ -104,6 +104,7 @@
   Datos.CAMPOS = {
     emisoras: [
       { k: 'nombre', l: 'Nombre de la facturadora', nota: 'como debe salir en el Excel', req: true },
+      { k: 'rfc', l: 'RFC', nota: 'opcional' },
       { k: 'nombre_archivo', l: 'Nombre corto', nota: 'para el nombre del archivo, ej. PUMAPONGO' },
       { k: 'alias', l: 'Otros nombres', nota: 'cómo aparece en las imágenes, separados por coma' },
     ],

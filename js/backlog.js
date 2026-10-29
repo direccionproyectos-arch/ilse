@@ -12,7 +12,7 @@
 
   const INFO = {
     emisoras: ['🏢 Empresas facturadoras (emisoras)', 'Aparecen en el desplegable "Empresa facturadora". En "Otros nombres" pon cómo viene escrita en las imágenes (ej. CORPORATION HOWITZER) para que se seleccione sola.',
-      [['nombre', 'Nombre'], ['nombre_archivo', 'Nombre corto'], ['alias', 'Otros nombres']]],
+      [['nombre', 'Nombre'], ['rfc', 'RFC'], ['nombre_archivo', 'Nombre corto'], ['alias', 'Otros nombres']]],
     receptoras: ['👥 Empresas cliente (receptoras)', 'Aparecen en el desplegable "Cliente" de cada factura. Sus datos (RFC, dirección, etc.) llenan el Excel automáticamente.',
       [['nombre', 'Nombre'], ['rfc', 'RFC'], ['ciudad', 'Ciudad'], ['alias', 'Otros nombres'], ['uso_cfdi', 'Uso CFDI']]],
     conceptos: ['🧠 Códigos SAT aprendidos', 'Cada vez que se descarga un Excel, el sistema guarda qué código SAT y unidad se usaron para cada concepto. La próxima vez que aparezca ese concepto lo pone solo. Aquí puedes corregirlos o agregarlos.',
@@ -20,6 +20,11 @@
   };
 
   async function cargar() {
+    const esXml = tab === 'xml';
+    $('tarjetaXml').classList.toggle('oculto', !esXml);
+    $('tarjetaLista').classList.toggle('oculto', esXml);
+    document.querySelectorAll('#pestanas button').forEach(b => b.classList.toggle('activo', b.dataset.t === tab));
+    if (esXml) return;
     try { datos = await Datos.listar(tab); } catch (e) { datos = []; toast('⚠️ ' + e.message, 6000); }
     pintar();
   }
@@ -113,5 +118,145 @@
     catch (er) { toast('⚠️ ' + er.message, 6000); }
     e.target.value = '';
   };
+  /* ================= Importar desde XML ================= */
+  const ETIQ = { nombre: 'nombre', rfc: 'RFC', cp: 'C.P.', uso_cfdi: 'uso de CFDI', forma_pago: 'forma de pago', metodo_pago: 'método de pago' };
+  const sinRef = t => String(t).replace(/\s*\bREF(ERENCIA)?\b\s*:?.*$/i, '').trim() || String(t);
+  const opcionDe = (lista, clave) => clave ? (lista.find(o => o.startsWith(clave + ' - ')) || '') : '';
+  const dz = $('dropXml'), fx = $('archivoXml');
+  dz.onclick = () => fx.click();
+  fx.onchange = () => { procesarXml([...fx.files]); fx.value = ''; };
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('sobre'); };
+  dz.ondragleave = () => dz.classList.remove('sobre');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('sobre'); procesarXml([...e.dataTransfer.files]); };
+
+  async function procesarXml(files) {
+    const res = $('resultadoXml');
+    if (!files.length) return;
+    res.innerHTML = ''; res.append(el('div', { class: 'aviso violeta' }, `⏳ Leyendo ${files.length} archivo(s)…`));
+    const { cfdis, errores } = await LectorXML.leerArchivos(files);
+    const [emisoras, receptoras, conceptos] = await Promise.all(['emisoras', 'receptoras', 'conceptos'].map(t => Datos.listar(t).catch(() => [])));
+    // Del más reciente al más antiguo: los datos más nuevos ganan
+    cfdis.sort((a, b) => String(b.comprobante.fecha).localeCompare(String(a.comprobante.fecha)));
+
+    // ---- Clientes (receptores)
+    const cli = new Map();
+    for (const c of cfdis) {
+      const r = c.receptor; if (!r.rfc) continue;
+      if (!cli.has(r.rfc)) cli.set(r.rfc, {
+        datos: { nombre: r.nombre.toUpperCase(), rfc: r.rfc, cp: r.cp,
+          uso_cfdi: opcionDe(cat.usoCfdi, r.usoCfdi), forma_pago: opcionDe(cat.formaPago, c.comprobante.formaPago),
+          metodo_pago: opcionDe(cat.metodoPago, c.comprobante.metodoPago) },
+        n: 0,
+      });
+      cli.get(r.rfc).n++;
+    }
+    const filasCli = [...cli.values()].map(({ datos, n }) => {
+      const prev = receptoras.find(x => (x.rfc || '').toUpperCase() === datos.rfc) || Datos.buscarEmpresa(receptoras, datos.nombre);
+      if (!prev) return { datos, n, prev: null, estado: '🆕 Nuevo', marcado: true };
+      const nuevos = Object.keys(datos).filter(k => datos[k] && !prev[k]);
+      return nuevos.length
+        ? { datos, n, prev, nuevos, estado: '➕ Completar: ' + nuevos.map(k => ETIQ[k] || k).join(', '), marcado: true }
+        : { datos, n, prev, estado: '✔️ Ya existe', marcado: false };
+    });
+
+    // ---- Facturadoras (emisores)
+    const emi = new Map();
+    for (const c of cfdis) { const e = c.emisor; if (e.rfc && !emi.has(e.rfc)) emi.set(e.rfc, { datos: { nombre: e.nombre.toUpperCase(), rfc: e.rfc }, n: 0 }); if (e.rfc) emi.get(e.rfc).n++; }
+    const filasEmi = [...emi.values()].map(({ datos, n }) => {
+      const prev = emisoras.find(x => (x.rfc || '').toUpperCase() === datos.rfc) || Datos.buscarEmpresa(emisoras, datos.nombre);
+      if (!prev) return { datos, n, prev: null, estado: '🆕 Nueva', marcado: false };
+      return prev.rfc ? { datos, n, prev, estado: '✔️ Ya existe', marcado: false } : { datos, n, prev, nuevos: ['rfc'], estado: '➕ Completar: rfc', marcado: true };
+    });
+
+    // ---- Conceptos → códigos SAT
+    const con = new Map();
+    for (const c of cfdis) for (const k of c.conceptos) {
+      const norm = SAT.normalizarConcepto(k.descripcion);
+      if (!norm || !k.claveProdServ) continue;
+      if (!con.has(norm)) con.set(norm, { norm, ejemplo: sinRef(k.descripcion.toUpperCase()), votos: new Map() });
+      const key = k.claveProdServ + '|' + (k.claveUnidad || '');
+      const g = con.get(norm); g.votos.set(key, (g.votos.get(key) || 0) + 1);
+    }
+    const filasCon = [...con.values()].map(g => {
+      const [key, n] = [...g.votos.entries()].sort((a, b) => b[1] - a[1])[0];
+      const total = [...g.votos.values()].reduce((a, b) => a + b, 0);
+      const [clave, unidad] = key.split('|');
+      const datos = {
+        concepto_normalizado: g.norm, concepto_ejemplo: g.ejemplo.replace(/\s+/g, ' ').trim(),
+        clave_prod_serv: clave, descripcion_prod_serv: motor.descProdServ(clave),
+        clave_unidad: unidad || window.CONFIG.DEFAULTS.claveUnidad, descripcion_unidad: UI.nombreUnidad(motor, unidad || window.CONFIG.DEFAULTS.claveUnidad),
+      };
+      const prev = conceptos.find(x => x.concepto_normalizado === g.norm);
+      const varios = g.votos.size > 1 ? ` · ${g.votos.size} códigos distintos en los XML, se toma el más usado (${n} de ${total})` : '';
+      if (!datos.descripcion_prod_serv) return { datos, n: total, prev, estado: '⚠️ Código no está en el catálogo', marcado: false };
+      if (!prev) return { datos, n: total, prev, estado: '🆕 Nuevo' + varios, marcado: true };
+      if (prev.clave_prod_serv === clave && prev.clave_unidad === datos.clave_unidad) return { datos, n: total, prev, estado: '✔️ Ya aprendido igual', marcado: false };
+      return { datos, n: total, prev, estado: `🔁 Antes: ${prev.clave_prod_serv} / ${prev.clave_unidad || '—'} (marca para reemplazar)` + varios, marcado: false };
+    });
+
+    pintarXml({ cfdis, errores, filasCli, filasEmi, filasCon });
+  }
+
+  function pintarXml({ cfdis, errores, filasCli, filasEmi, filasCon }) {
+    const res = $('resultadoXml'); res.innerHTML = '';
+    res.append(el('div', { class: 'aviso ' + (cfdis.length ? 'verde' : 'ambar') }, `📄 Leí ${cfdis.length} factura(s): ${filasCli.length} cliente(s), ${filasEmi.length} facturadora(s) y ${filasCon.length} concepto(s) distintos.`));
+    errores.forEach(e => res.append(el('div', { class: 'aviso ambar' }, '⚠️ ' + e)));
+    if (!cfdis.length) return;
+
+    const contador = el('span');
+    const total = () => [...filasCli, ...filasEmi, ...filasCon].filter(f => f.marcado).length;
+    const refrescar = () => { contador.textContent = total(); btn.disabled = !total(); };
+    const seccion = (titulo, nota, filas, cols) => {
+      if (!filas.length) return null;
+      const todos = el('input', { type: 'checkbox', style: 'width:auto', checked: filas.every(f => f.marcado), onchange: e => { filas.forEach(f => f.marcado = e.target.checked); tb.querySelectorAll('input').forEach(i => i.checked = e.target.checked); refrescar(); } });
+      const tb = el('tbody');
+      filas.forEach(f => tb.append(el('tr', {},
+        el('td', {}, el('input', { type: 'checkbox', style: 'width:auto', checked: f.marcado, onchange: e => { f.marcado = e.target.checked; refrescar(); } })),
+        ...cols.map(c => el('td', {}, c(f))),
+        el('td', {}, el('span', { class: 'nota' }, f.estado)))));
+      return el('div', { style: 'margin-top:22px' },
+        el('h3', { style: 'margin:0 0 4px;font-size:18px' }, titulo), el('p', { class: 'ayuda', style: 'margin:0 0 8px' }, nota),
+        el('div', { class: 'tabla-wrap' }, el('table', { class: 'lista' },
+          el('thead', {}, el('tr', {}, el('th', { style: 'width:36px' }, todos), ...cols.map(c => el('th', {}, c.titulo)), el('th', {}, 'Qué pasará'))), tb)));
+    };
+    const col = (titulo, fn) => Object.assign(fn, { titulo });
+    const mono = t => el('span', { style: 'font-family:var(--mono)' }, t || '—');
+
+    const btn = el('button', { class: 'btn grande', onclick: () => guardarXml({ filasCli, filasEmi, filasCon }, btn) }, '💾 Guardar seleccionados: ', contador);
+    res.append(
+      seccion('👥 Clientes (receptoras)', 'Del XML salen nombre, RFC, C.P., uso de CFDI, forma y método de pago. La dirección, colonia y ciudad no vienen en el XML: complétalas después en la pestaña Clientes. Si el cliente ya existe sólo se llenan los campos vacíos.', filasCli, [
+        col('Nombre', f => f.datos.nombre), col('RFC', f => mono(f.datos.rfc)), col('C.P.', f => mono(f.datos.cp)), col('Uso CFDI', f => f.datos.uso_cfdi || '—'), col('Facturas', f => mono(String(f.n)))]),
+      seccion('🏢 Facturadoras (emisoras)', 'Vienen sin marcar: agrégalas sólo si también son facturadoras que usas en los folios.', filasEmi, [
+        col('Nombre', f => f.datos.nombre), col('RFC', f => mono(f.datos.rfc)), col('Facturas', f => mono(String(f.n)))]),
+      seccion('🧠 Códigos SAT por concepto', 'Se aprenden para que, cuando ese concepto aparezca en una imagen, el código y la unidad salgan solos.', filasCon, [
+        col('Concepto', f => f.datos.concepto_ejemplo), col('Código SAT', f => el('div', {}, mono(f.datos.clave_prod_serv), el('div', { class: 'desc-sat' }, (f.datos.descripcion_prod_serv || '').toUpperCase()))),
+        col('Unidad', f => el('div', {}, mono(f.datos.clave_unidad), el('div', { class: 'desc-sat' }, f.datos.descripcion_unidad))), col('Veces', f => mono(String(f.n)))]),
+      el('div', { class: 'acciones' }, btn));
+    refrescar();
+  }
+
+  async function guardarXml({ filasCli, filasEmi, filasCon }, btn) {
+    btn.disabled = true;
+    let ok = 0; const fallas = [];
+    const guardar = async (tabla, f, obj) => { try { await Datos.guardar(tabla, obj); ok++; f.marcado = false; } catch (e) { fallas.push(`${obj.nombre || obj.concepto_ejemplo}: ${e.message}`); } };
+    for (const f of filasCli.filter(f => f.marcado)) {
+      if (!f.prev) await guardar('receptoras', f, f.datos);
+      else { const o = { ...f.prev }; f.nuevos.forEach(k => o[k] = f.datos[k]); await guardar('receptoras', f, o); }
+    }
+    for (const f of filasEmi.filter(f => f.marcado)) {
+      if (!f.prev) await guardar('emisoras', f, { ...f.datos, alias: f.datos.nombre });
+      else await guardar('emisoras', f, { ...f.prev, rfc: f.datos.rfc });
+    }
+    for (const f of filasCon.filter(f => f.marcado)) {
+      await guardar('conceptos', f, { ...(f.prev ? { id: f.prev.id } : {}), ...f.datos, usos: (f.prev?.usos || 0) + f.n });
+    }
+    const res = $('resultadoXml');
+    res.innerHTML = '';
+    res.append(el('div', { class: 'aviso ' + (fallas.length ? 'ambar' : 'verde') }, `✅ Se guardaron ${ok} registro(s).` + (fallas.length ? ` ${fallas.length} no se pudieron guardar.` : '')));
+    fallas.forEach(e => res.append(el('div', { class: 'aviso rojo' }, '⚠️ ' + e)));
+    if (filasCli.some(f => !f.prev)) res.append(el('div', { class: 'aviso violeta' }, '📝 Recuerda completar dirección, colonia y ciudad de los clientes nuevos en la pestaña 👥 Clientes; el XML no las trae.'));
+    toast('✅ Backlog actualizado');
+  }
+
   cargar();
 })();
