@@ -288,7 +288,7 @@
       const archivos = [];
       for (const F of lista) {
         const receptor = G.receptores.find(r => r.id === F.receptorId);
-        const res = await GeneradorExcel.generar(ExcelJS, plantillaBuf.slice(0), {
+        const res = await GeneradorExcel.generar(JSZip, plantillaBuf.slice(0), {
           emisor, receptor, fechaFactura: G.fechaFactura, fechaOperacion: G.fechaOperacion || G.fechaFactura,
           formaPago: F.formaPago, metodoPago: F.metodoPago, usoCfdi: F.usoCfdi,
           sucursal: F.sucursal, promotor: F.promotor, noCuenta: F.noCuenta, moneda: G.moneda,
