@@ -7,7 +7,7 @@
  *    "modo local": los datos se guardan sólo en ese navegador. */
 window.CONFIG = {
   SUPABASE_URL: 'https://axhfjxcttpbkocbzkybo.supabase.co',
-  SUPABASE_ANON_KEY: '',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1ZnFpZWl1dmhoeXZ0ZnhsZ3d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMTEyNTQsImV4cCI6MjEwODg4NzI1NH0.P6yvatUygQRarBd7ErUN7vX_uJM-UijQvOs-M7fL5IQ',
 
   // Cómo se escribe el concepto en el Excel. Variables: {CONCEPTO} {REFERENCIA}
   PLANTILLA_CONCEPTO: '{CONCEPTO} REF: {REFERENCIA}',
