@@ -21,7 +21,16 @@
       return data.session;
     },
     async login(email, password) {
-      const { error } = await sb.auth.signInWithPassword({ email, password }); err(error);
+      let error;
+      try { ({ error } = await sb.auth.signInWithPassword({ email, password })); }
+      catch (e) { error = e; }
+      if (!error) return;
+      const m = String(error.message || error);
+      if (/fetch|network|load failed/i.test(m)) throw new Error('No se pudo conectar con Supabase. Revisa que SUPABASE_URL en js/config.js sea la "Project URL" de tu proyecto (Project Settings → API) y que el proyecto no esté pausado.');
+      if (/invalid api key|apikey|jwt/i.test(m)) throw new Error('La clave de Supabase no es válida. Copia de nuevo la "anon public" en js/config.js.');
+      if (/invalid login credentials/i.test(m)) throw new Error('Correo o contraseña incorrectos.');
+      if (/email not confirmed/i.test(m)) throw new Error('Este usuario no está confirmado. En Supabase créalo con "Auto Confirm User" activado (ver README).');
+      throw new Error(m);
     },
     async logout() { if (sb) await sb.auth.signOut(); location.reload(); },
 

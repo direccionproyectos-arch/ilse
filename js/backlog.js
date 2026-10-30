@@ -118,6 +118,48 @@
     catch (er) { toast('⚠️ ' + er.message, 6000); }
     e.target.value = '';
   };
+  /* ===== Datos que quedaron sólo en esta computadora (modo local) → base compartida ===== */
+  function avisoLocal() {
+    if (Datos.modo !== 'supabase') {
+      $('pestanas').parentNode.insertBefore(el('div', { class: 'aviso ambar' },
+        '💻 Modo local: lo que captures aquí sólo se guarda en esta computadora. Para compartirlo con todos, configura Supabase en js/config.js (ver README).'),
+        $('pestanas'));
+      return;
+    }
+    const locales = {};
+    let cuantos = 0;
+    for (const t of ['emisoras', 'receptoras', 'conceptos']) {
+      try { locales[t] = JSON.parse(localStorage.getItem('folios_' + t) || '[]'); } catch { locales[t] = []; }
+      cuantos += locales[t].length;
+    }
+    if (!cuantos) return;
+    const caja = el('div', { class: 'aviso violeta' },
+      `📤 Esta computadora tiene ${cuantos} registro(s) capturados antes en modo local (${locales.emisoras.length} facturadoras, ${locales.receptoras.length} clientes, ${locales.conceptos.length} códigos). `,
+      el('button', {
+        class: 'btn', style: 'margin-left:8px', onclick: async e => {
+          e.target.disabled = true;
+          try {
+            const [emis, recs, cons] = await Promise.all(['emisoras', 'receptoras', 'conceptos'].map(t => Datos.listar(t)));
+            const ya = { emisoras: emis, receptoras: recs, conceptos: cons };
+            let subidos = 0;
+            for (const t of ['emisoras', 'receptoras', 'conceptos']) for (const o of locales[t]) {
+              const { id, ...datos } = o;
+              const existe = t === 'conceptos'
+                ? ya[t].find(x => x.concepto_normalizado === o.concepto_normalizado)
+                : ya[t].find(x => (o.rfc && (x.rfc || '').toUpperCase() === o.rfc.toUpperCase()) || x.nombre === o.nombre);
+              if (existe) continue;
+              await Datos.guardar(t, datos); subidos++;
+            }
+            ['emisoras', 'receptoras', 'conceptos'].forEach(t => localStorage.removeItem('folios_' + t));
+            caja.className = 'aviso verde'; caja.textContent = `✅ Se subieron ${subidos} registro(s) a la base compartida (los que ya existían se omitieron).`;
+            cargar();
+          } catch (er) { e.target.disabled = false; toast('⚠️ ' + er.message, 6000); }
+        }
+      }, '⬆️ Subirlos a la base compartida'));
+    $('pestanas').parentNode.insertBefore(caja, $('pestanas'));
+  }
+  avisoLocal();
+
   /* ================= Importar desde XML ================= */
   const ETIQ = { nombre: 'nombre', rfc: 'RFC', cp: 'C.P.', uso_cfdi: 'uso de CFDI', forma_pago: 'forma de pago', metodo_pago: 'método de pago' };
   const sinRef = t => String(t).replace(/\s*\bREF(ERENCIA)?\b\s*:?.*$/i, '').trim() || String(t);
